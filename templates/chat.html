@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат-приложение</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💬 Чат-приложение</h1>
+            <p>Отправляйте и получайте сообщения</p>
+            <div class="user-badge">Ваш ID пользователя: <strong id="userIdDisplay">{{ user_id }}</strong></div>
+        </div>
+        
+        <div class="content">
+            <div class="sidebar">
+                <h3>✉️ Отправить сообщение</h3>
+                <div id="messageStatus"></div>
+                <form id="sendMessageForm" class="send-message-form">
+                    <div class="form-group">
+                        <label for="userIdTo">Кому (ID пользователя):</label>
+                        <input type="number" id="userIdTo" required placeholder="Введите ID получателя">
+                    </div>
+                    <div class="form-group">
+                        <label for="messageText">Сообщение:</label>
+                        <textarea id="messageText" required placeholder="Введите ваше сообщение..."></textarea>
+                    </div>
+                    <button type="submit">Отправить ➤</button>
+                </form>
+            </div>
+            
+            <div class="main-content">
+                <div class="messages-header">
+                    <h3>📥 Входящие сообщения</h3>
+                    <button class="refresh-btn" onclick="loadMessages()">🔄 Обновить</button>
+                </div>
+                <div id="messagesList">
+                    <div class="loading">Загрузка сообщений...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const userId = {{ user_id }};
+        
+        async function loadMessages() {
+            const messagesDiv = document.getElementById('messagesList');
+            messagesDiv.innerHTML = '<div class="loading">Загрузка сообщений...</div>';
+            
+            try {
+                const response = await fetch(`/api?user_id=${userId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load messages');
+                }
+                
+                const data = await response.json();
+                displayMessages(data.result);
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                messagesDiv.innerHTML = '<div class="error">❌ Не удалось загрузить сообщения. Попробуйте снова.</div>';
+            }
+        }
+        
+        function displayMessages(messages) {
+            const messagesDiv = document.getElementById('messagesList');
+            
+            if (!messages || messages.length === 0) {
+                messagesDiv.innerHTML = '<div class="no-messages">📭 Нет сообщений. Отправьте кому-нибудь сообщение!</div>';
+                return;
+            }
+            
+            messagesDiv.innerHTML = '';
+            
+            // Показываем сообщения в обратном хронологическом порядке (новые сверху)
+            [...messages].reverse().forEach(message => {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message';
+                
+                const date = new Date(message.timestamp);
+                const formattedDate = date.toLocaleString('ru-RU');
+                
+                messageElement.innerHTML = `
+                    <div class="message-header">
+                        <span class="message-from">От: Пользователь ${message.user_from_id}</span>
+                        <span class="message-date">${formattedDate}</span>
+                    </div>
+                    <div class="message-text">${escapeHtml(message.text)}</div>
+                `;
+                
+                messagesDiv.appendChild(messageElement);
+            });
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        async function sendMessage(event) {
+            event.preventDefault();
+            
+            const userIdTo = document.getElementById('userIdTo').value;
+            const messageText = document.getElementById('messageText').value;
+            const statusDiv = document.getElementById('messageStatus');
+            
+            if (!userIdTo || !messageText) {
+                showStatus('Пожалуйста, заполните все поля', 'error');
+                return;
+            }
+            
+            statusDiv.innerHTML = '<div class="loading">Отправка...</div>';
+            
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id_from: userId,
+                        user_id_to: parseInt(userIdTo),
+                        text: messageText
+                    })
+                });
+                
+                if (response.ok) {
+                    showStatus('✅ Сообщение успешно отправлено!', 'success');
+                    document.getElementById('sendMessageForm').reset();
+                    // Перезагружаем сообщения после отправки
+                    setTimeout(() => loadMessages(), 500);
+                } else {
+                    throw new Error('Failed to send message');
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showStatus('❌ Не удалось отправить сообщение. Попробуйте снова.', 'error');
+            }
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('messageStatus');
+            statusDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 3000);
+        }
+        
+        // Настройка обработчика событий
+        document.getElementById('sendMessageForm').addEventListener('submit', sendMessage);
+        
+        // Загружаем сообщения при загрузке страницы
+        loadMessages();
+        
+        // Авто-обновление каждые 10 секунд
+        setInterval(loadMessages, 10000);
+    </script>
+</body>
+</html>
